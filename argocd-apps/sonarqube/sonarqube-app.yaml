@@ -1,0 +1,90 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sonarqube
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://SonarSource.github.io/helm-chart-sonarqube
+    chart: sonarqube
+    targetRevision: 10.5.0+796
+    helm:
+      values: |
+        image:
+          repository: sonarqube
+          tag: "10.5.0-community"
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        ingress:
+          enabled: true
+          ingressClassName: nginx
+          hosts:
+            - name: sonarqube.local
+              path: /
+          annotations:
+            nginx.ingress.kubernetes.io/ssl-redirect: "false"
+            nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+        persistence:
+          enabled: true
+          storageClass: gp2
+          size: 10Gi
+        postgresql:
+          enabled: true
+          auth:
+            postgresPassword: sonarqube123!
+            database: sonarqube
+          primary:
+            persistence:
+              enabled: true
+              storageClass: gp2
+              size: 10Gi
+            resources:
+              requests:
+                cpu: 200m
+                memory: 512Mi
+              limits:
+                cpu: 500m
+                memory: 1Gi
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          fsGroup: 1000
+        containerSecurityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+              - ALL
+        env:
+          - name: SONAR_ES_BOOTSTRAP_CHECKS_DISABLE
+            value: "true"
+        sonarProperties:
+          sonar.forceAuthentication: false
+        account:
+          adminPassword: admin123!
+          currentAdminPassword: admin
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: sonarqube
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 5m

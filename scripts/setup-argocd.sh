@@ -71,6 +71,28 @@ check_prerequisites() {
         exit 1
     fi
     print_success "West cluster context found"
+    
+    # Check storage class
+    for cluster in $EAST_CLUSTER $WEST_CLUSTER; do
+        kubectl config use-context $cluster
+        if ! kubectl get storageclass gp2 &> /dev/null; then
+            print_warning "StorageClass 'gp2' not found in $cluster, creating default gp2 StorageClass"
+            kubectl apply -f - << 'EOF'
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp2
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp2
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+EOF
+            print_success "StorageClass 'gp2' created in $cluster"
+        else
+            print_success "StorageClass 'gp2' found in $cluster"
+        fi
+    done
 }
 
 # Create directory structure
@@ -165,10 +187,11 @@ spec:
     helm:
       values: |
         admissionController:
-          replicas: 1
+          replicas: 2
           resources:
             limits:
               memory: 384Mi
+              cpu: 500m
             requests:
               cpu: 100m
               memory: 128Mi
@@ -177,6 +200,7 @@ spec:
           resources:
             limits:
               memory: 256Mi
+              cpu: 500m
             requests:
               cpu: 100m
               memory: 128Mi
@@ -185,9 +209,12 @@ spec:
           resources:
             limits:
               memory: 256Mi
+              cpu: 500m
             requests:
               cpu: 100m
               memory: 128Mi
+        namespace: kyverno
+        installCRDs: true
   destination:
     server: https://kubernetes.default.svc
     namespace: kyverno
@@ -198,11 +225,11 @@ spec:
     syncOptions:
     - CreateNamespace=true
     retry:
-      limit: 3
+      limit: 5
       backoff:
         duration: 5s
         factor: 2
-        maxDuration: 3m
+        maxDuration: 5m
 EOF
 
     # Kyverno policy exclusions
@@ -221,7 +248,7 @@ spec:
     ruleNames:
     - check-allowPrivilegeEscalation
   match:
-  - any:
+    any:
     - resources:
         kinds:
         - Pod
@@ -247,7 +274,7 @@ spec:
     ruleNames:
     - validate-resources
   match:
-  - any:
+    any:
     - resources:
         kinds:
         - Pod
@@ -314,20 +341,11 @@ spec:
           authorizationStrategy: |-
             loggedInUsersCanDoAnything:
               allowAnonymousRead: false
-          # Kyverno compliance settings
-          runAsUser: 1000
-          runAsGroup: 1000
-          fsGroup: 1000
           securityContext:
             runAsNonRoot: true
             runAsUser: 1000
             runAsGroup: 1000
             fsGroup: 1000
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: false
-            capabilities:
-              drop:
-                - ALL
           containerSecurityContext:
             runAsNonRoot: true
             runAsUser: 1000
@@ -363,11 +381,11 @@ spec:
     syncOptions:
     - CreateNamespace=true
     retry:
-      limit: 3
+      limit: 5
       backoff:
         duration: 5s
         factor: 2
-        maxDuration: 3m
+        maxDuration: 5m
 EOF
 
     # SonarQube application
@@ -382,12 +400,19 @@ spec:
   source:
     repoURL: https://SonarSource.github.io/helm-chart-sonarqube
     chart: sonarqube
-    targetRevision: 10.7.0
+    targetRevision: 10.5.0+796
     helm:
       values: |
         image:
           repository: sonarqube
-          tag: "10.6.0-community"
+          tag: "10.5.0-community"
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
         ingress:
           enabled: true
           ingressClassName: nginx
@@ -397,13 +422,6 @@ spec:
           annotations:
             nginx.ingress.kubernetes.io/ssl-redirect: "false"
             nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
-        resources:
-          requests:
-            cpu: 500m
-            memory: 1Gi
-          limits:
-            cpu: 1000m
-            memory: 2Gi
         persistence:
           enabled: true
           storageClass: gp2
@@ -425,7 +443,6 @@ spec:
               limits:
                 cpu: 500m
                 memory: 1Gi
-        # Kyverno compliance settings
         securityContext:
           runAsNonRoot: true
           runAsUser: 1000
@@ -458,11 +475,11 @@ spec:
     syncOptions:
     - CreateNamespace=true
     retry:
-      limit: 3
+      limit: 5
       backoff:
         duration: 5s
         factor: 2
-        maxDuration: 3m
+        maxDuration: 5m
 EOF
 
     print_success "Application manifests created"
@@ -482,22 +499,181 @@ deploy_applications() {
     
     # Wait for Kyverno to be ready
     print_info "Waiting for Kyverno to be ready (this may take a few minutes)..."
-    sleep 30
-    kubectl wait --for=condition=available --timeout=300s deployment/kyverno-admission-controller -n kyverno || true
+    for i in {1..12}; do
+        if kubectl wait --for=condition=available --timeout=30s deployment/kyverno-admission-controller -n kyverno 2>/dev/null; then
+            print_success "Kyverno admission controller is ready"
+            break
+        fi
+        print_info "Waiting for Kyverno admission controller... ($i/12)"
+        sleep 30
+    done
     
     # Apply policy exclusions
     print_info "Applying Kyverno policy exclusions..."
-    kubectl apply -f "$PROJECT_DIR/argocd-apps/kyverno/policy-exclusions.yaml" || true
+    kubectl apply -f "$PROJECT_DIR/argocd-apps/kyverno/policy-exclusions.yaml" || print_warning "Failed to apply policy exclusions, may need manual intervention"
     
     # Deploy Jenkins
     print_info "Deploying Jenkins..."
     kubectl apply -f "$PROJECT_DIR/argocd-apps/jenkins/jenkins-app.yaml"
     
+    # Wait for Jenkins to be ready
+    print_info "Waiting for Jenkins to be ready..."
+    for i in {1..12}; do
+        if kubectl wait --for=condition=available --timeout=30s deployment/jenkins -n jenkins 2>/dev/null; then
+            print_success "Jenkins is ready"
+            break
+        fi
+        print_info "Waiting for Jenkins... ($i/12)"
+        sleep 30
+    done
+    
     # Deploy SonarQube
     print_info "Deploying SonarQube..."
     kubectl apply -f "$PROJECT_DIR/argocd-apps/sonarqube/sonarqube-app.yaml"
     
+    # Wait for SonarQube to be ready
+    print_info "Waiting for SonarQube to be ready..."
+    for i in {1..12}; do
+        if kubectl wait --for=condition=available --timeout=30s statefulset/sonarqube-sonarqube -n sonarqube 2>/dev/null; then
+            print_success "SonarQube is ready"
+            break
+        fi
+        print_info "Waiting for SonarQube... ($i/12)"
+        sleep 30
+    done
+    
     print_success "Applications deployed on $cluster_name"
+}
+
+# Create additional Kyverno policies
+create_security_policies() {
+    print_header "Creating Additional Security Policies"
+    
+    cat > "$PROJECT_DIR/argocd-apps/kyverno/security-policies.yaml" << 'EOF'
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-privilege-escalation
+  annotations:
+    policies.kyverno.io/title: Disallow Privilege Escalation
+    policies.kyverno.io/category: Pod Security Standards (Restricted)
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Privilege escalation should not be allowed. This policy ensures containers
+      do not allow privilege escalation.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: check-allowPrivilegeEscalation
+      match:
+        any:
+        - resources:
+            kinds:
+            - Pod
+      validate:
+        message: "Privilege escalation is not allowed"
+        pattern:
+          spec:
+            =(securityContext):
+              =(allowPrivilegeEscalation): "false"
+            containers:
+            - name: "*"
+              =(securityContext):
+                =(allowPrivilegeEscalation): "false"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-pod-resources
+  annotations:
+    policies.kyverno.io/title: Require Pod Resources
+    policies.kyverno.io/category: Multi-Tenancy
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Pods should have CPU and memory resource requests and limits defined.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: validate-resources
+      match:
+        any:
+        - resources:
+            kinds:
+            - Pod
+      exclude:
+        any:
+        - resources:
+            namespaces:
+            - kube-system
+            - kube-public
+            - kube-node-lease
+            - ingress-nginx
+            - crossplane-system
+      validate:
+        message: "Resource requests and limits are required"
+        pattern:
+          spec:
+            containers:
+            - name: "*"
+              resources:
+                requests:
+                  memory: "?*"
+                  cpu: "?*"
+                limits:
+                  memory: "?*"
+                  cpu: "?*"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-non-root-user
+  annotations:
+    policies.kyverno.io/title: Require Non-Root User
+    policies.kyverno.io/category: Pod Security Standards (Restricted)
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Containers should run as non-root user. This policy ensures containers
+      run with a non-root user ID.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: check-runAsNonRoot
+      match:
+        any:
+        - resources:
+            kinds:
+            - Pod
+      validate:
+        message: "Containers must run as non-root user"
+        anyPattern:
+        - spec:
+            securityContext:
+              runAsNonRoot: true
+        - spec:
+            containers:
+            - name: "*"
+              securityContext:
+                runAsNonRoot: true
+EOF
+
+    # Apply security policies to both clusters after Kyverno is ready
+    for cluster in $EAST_CLUSTER $WEST_CLUSTER; do
+        kubectl config use-context $cluster
+        print_info "Applying security policies to $cluster..."
+        for i in {1..12}; do
+            if kubectl apply -f "$PROJECT_DIR/argocd-apps/kyverno/security-policies.yaml" 2>/dev/null; then
+                print_success "Security policies applied to $cluster"
+                break
+            fi
+            print_info "Waiting for Kyverno CRDs to be ready in $cluster... ($i/12)"
+            sleep 30
+        done
+    done
+    
+    print_success "Security policies created"
 }
 
 # Get access information
@@ -573,132 +749,12 @@ monitor_deployments() {
         echo ""
         echo "Persistent Volumes:"
         kubectl get pv 2>/dev/null | grep -E "(jenkins|sonarqube)" || echo "  No PVs found yet"
+        
+        echo ""
+        echo "Persistent Volume Claims:"
+        kubectl get pvc -A | grep -E "(jenkins|sonarqube)" || echo "  No PVCs found yet"
         echo ""
     done
-}
-
-# Create additional Kyverno policies
-create_security_policies() {
-    print_header "Creating Additional Security Policies"
-    
-    cat > "$PROJECT_DIR/argocd-apps/kyverno/security-policies.yaml" << 'EOF'
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
-metadata:
-  name: disallow-privilege-escalation
-  annotations:
-    policies.kyverno.io/title: Disallow Privilege Escalation
-    policies.kyverno.io/category: Pod Security Standards (Restricted)
-    policies.kyverno.io/severity: medium
-    policies.kyverno.io/description: >-
-      Privilege escalation should not be allowed. This policy ensures containers
-      do not allow privilege escalation.
-spec:
-  validationFailureAction: enforce
-  background: true
-  rules:
-    - name: check-allowPrivilegeEscalation
-      match:
-        any:
-        - resources:
-            kinds:
-            - Pod
-      validate:
-        message: "Privilege escalation is not allowed"
-        pattern:
-          spec:
-            =(securityContext):
-              =(allowPrivilegeEscalation): "false"
-            containers:
-            - name: "*"
-              =(securityContext):
-                =(allowPrivilegeEscalation): "false"
----
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
-metadata:
-  name: require-pod-resources
-  annotations:
-    policies.kyverno.io/title: Require Pod Resources
-    policies.kyverno.io/category: Multi-Tenancy
-    policies.kyverno.io/severity: medium
-    policies.kyverno.io/description: >-
-      Pods should have CPU and memory resource requests and limits defined.
-spec:
-  validationFailureAction: enforce
-  background: true
-  rules:
-    - name: validate-resources
-      match:
-        any:
-        - resources:
-            kinds:
-            - Pod
-      exclude:
-        any:
-        - resources:
-            namespaces:
-            - kube-system
-            - kube-public
-            - kube-node-lease
-            - ingress-nginx
-            - crossplane-system
-      validate:
-        message: "Resource requests and limits are required"
-        pattern:
-          spec:
-            containers:
-            - name: "*"
-              resources:
-                requests:
-                  memory: "?*"
-                  cpu: "?*"
-                limits:
-                  memory: "?*"
-                  cpu: "?*"
----
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
-metadata:
-  name: require-non-root-user
-  annotations:
-    policies.kyverno.io/title: Require Non-Root User
-    policies.kyverno.io/category: Pod Security Standards (Restricted)
-    policies.kyverno.io/severity: medium
-    policies.kyverno.io/description: >-
-      Containers should run as non-root user. This policy ensures containers
-      run with a non-root user ID.
-spec:
-  validationFailureAction: enforce
-  background: true
-  rules:
-    - name: check-runAsNonRoot
-      match:
-        any:
-        - resources:
-            kinds:
-            - Pod
-      validate:
-        message: "Containers must run as non-root user"
-        anyPattern:
-        - spec:
-            securityContext:
-              runAsNonRoot: true
-        - spec:
-            containers:
-            - name: "*"
-              securityContext:
-                runAsNonRoot: true
-EOF
-
-    # Apply security policies to both clusters
-    kubectl config use-context $EAST_CLUSTER
-    kubectl apply -f "$PROJECT_DIR/argocd-apps/kyverno/security-policies.yaml" || true
-    
-    kubectl config use-context $WEST_CLUSTER
-    kubectl apply -f "$PROJECT_DIR/argocd-apps/kyverno/security-policies.yaml" || true
-    
-    print_success "Security policies created"
 }
 
 # Create verification script
@@ -757,7 +813,7 @@ verify_cluster() {
     if [ "$jenkins_status" = "Running" ]; then
         print_success "Jenkins is running"
     else
-        print_error "Jenkins status: $jenkins_status"
+        print_error "Jenkins status: ${jenkins_status:-Not deployed}"
     fi
     
     # Check SonarQube
@@ -766,7 +822,7 @@ verify_cluster() {
     if [ "$sonarqube_status" = "Running" ]; then
         print_success "SonarQube is running"
     else
-        print_error "SonarQube status: $sonarqube_status"
+        print_error "SonarQube status: ${sonarqube_status:-Not deployed}"
     fi
     
     # Check Kyverno
@@ -777,20 +833,26 @@ verify_cluster() {
         local policy_count=$(kubectl get cpol --no-headers 2>/dev/null | wc -l)
         print_info "Active policies: $policy_count"
     else
-        print_error "Kyverno status: $kyverno_status"
+        print_error "Kyverno status: ${kyverno_status:-Not deployed}"
     fi
     
     # Check PVs
     echo -e "\nPersistent Volumes:"
     kubectl get pv | grep -E "(jenkins|sonarqube)" | while read line; do
         echo "  $line"
-    done
+    done || echo "  No PVs found"
+    
+    # Check PVCs
+    echo -e "\nPersistent Volume Claims:"
+    kubectl get pvc -A | grep -E "(jenkins|sonarqube)" | while read line; do
+        echo "  $line"
+    done || echo "  No PVCs found"
     
     # Check Ingress
     echo -e "\nIngress Status:"
     kubectl get ingress -A 2>/dev/null | grep -E "(jenkins|sonarqube)" | while read line; do
         echo "  $line"
-    done
+    done || echo "  No Ingress found"
 }
 
 # Test policy enforcement
@@ -807,7 +869,7 @@ test_policies() {
         print_success "Privilege escalation policy working"
     fi
     
-    # Test resource requirements (should fail)
+    # Test resource requirements
     echo -e "\nTesting resource requirements policy (should fail):"
     if kubectl run test-no-resources --image=nginx --dry-run=server 2>/dev/null; then
         print_error "Resource requirements policy not enforced"
@@ -851,17 +913,17 @@ main() {
     
     create_argocd_service
     create_application_manifests
-    create_security_policies
     
     # Deploy applications
     deploy_applications $EAST_CLUSTER
     deploy_applications $WEST_CLUSTER
     
+    create_security_policies
     create_verification_script
     
     print_header "Deployment Complete"
     print_info "Waiting for services to be ready (this may take 5-10 minutes)..."
-    sleep 30
+    sleep 60
     
     get_access_info
     monitor_deployments
@@ -873,6 +935,7 @@ main() {
     print_success "Kyverno security policies active"
     print_info "Run './scripts/verify-argocd-setup.sh' to verify the setup"
     print_info "LoadBalancer URLs may take a few minutes to become available"
+    print_info "Check pod logs and PVC status if applications are not running"
 }
 
 # Run main function
