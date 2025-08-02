@@ -187,7 +187,7 @@ spec:
     helm:
       values: |
         admissionController:
-          replicas: 2
+          replicas: 1
           resources:
             limits:
               memory: 384Mi
