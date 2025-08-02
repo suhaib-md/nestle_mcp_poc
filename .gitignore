@@ -1,2 +1,4 @@
 .venv
 q/
+scripts/argocd-credentials-multi-region-eks-east.txt
+scripts/argocd-credentials-multi-region-eks-west.txt
