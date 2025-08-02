@@ -1,0 +1,52 @@
+{
+  "mcpServers": {
+    "awslabs.eks-mcp-server": {
+      "command": "/home/suhaib/.local/bin/uvx",
+      "args": [
+        "awslabs.eks-mcp-server@latest",
+        "--allow-write",
+        "--allow-sensitive-data-access"
+      ],
+      "env": {
+        "FASTMCP_LOG_LEVEL": "INFO",
+        "AWS_PROFILE": "default",
+        "AWS_REGION": "us-east-1"
+      },
+      "autoApprove": [],
+      "disabled": false
+    },
+    "awslabs.ecs-mcp-server": {
+      "command": "/home/suhaib/.local/bin/uvx",
+      "args": [
+        "--from",
+        "awslabs.ecs-mcp-server@latest",
+        "ecs-mcp-server",
+        "--allow-write",
+        "--allow-sensitive-data-access"
+      ],
+      "entrypoint": "ecs-mcp-server",
+      "env": {
+        "FASTMCP_LOG_LEVEL": "INFO",
+        "AWS_PROFILE": "default",
+        "AWS_REGION": "us-east-1"
+      },
+      "autoApprove": [],
+      "disabled": false
+    },
+    "awslabs.terraform-mcp-server": {
+      "command": "/home/suhaib/.local/bin/uvx",
+      "args": [
+        "awslabs.terraform-mcp-server@latest",
+        "--allow-write",
+        "--allow-sensitive-data-access"
+      ],
+      "env": {
+        "FASTMCP_LOG_LEVEL": "INFO",
+        "AWS_PROFILE": "default",
+        "AWS_REGION": "us-east-1"
+      },
+      "autoApprove": [],
+      "disabled": false
+    }
+  }
+}

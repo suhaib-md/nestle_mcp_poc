@@ -1,0 +1,24 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: VPC Peering route configuration for us-west-2
+
+Parameters:
+  VPCPeeringConnectionId:
+    Type: String
+    Description: VPC Peering Connection ID
+  WestRouteTableId:
+    Type: String
+    Description: Route table ID from us-west-2 EKS cluster
+
+Resources:
+  # Route from West to East
+  WestToEastRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref WestRouteTableId
+      DestinationCidrBlock: 10.0.0.0/16
+      VpcPeeringConnectionId: !Ref VPCPeeringConnectionId
+
+Outputs:
+  RouteCreated:
+    Description: Route from West to East created
+    Value: !Ref WestToEastRoute

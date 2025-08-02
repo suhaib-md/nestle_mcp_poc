@@ -1,0 +1,21 @@
+apiVersion: ec2.aws.crossplane.io/v1alpha1
+kind: Volume
+metadata:
+  name: crossplane-ebs-test
+  labels:
+    test: crossplane
+    component: ebs-volume
+spec:
+  forProvider:
+    availabilityZone: us-west-2a
+    size: 10
+    volumeType: gp3
+    region: us-west-2
+    tags:
+      Name: "crossplane-test-volume"
+      Environment: "test"
+      CreatedBy: "crossplane"
+      TestType: "ebs-volume-test"
+  providerConfigRef:
+    name: default
+  deletionPolicy: Delete

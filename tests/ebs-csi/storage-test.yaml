@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ebs-test-pvc
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: ebs-csi-gp3
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ebs-test-pod
+  namespace: default
+  labels:
+    test: ebs-csi
+spec:
+  tolerations:
+  - key: CriticalAddonsOnly
+    operator: Exists
+    effect: NoSchedule
+  - key: karpenter.sh/disrupted
+    operator: Exists
+    effect: NoSchedule
+  containers:
+  - name: test-container
+    image: busybox:1.35
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== EBS CSI Driver Test Starting ==="
+      echo "Writing test data to EBS volume..."
+      echo "EBS CSI Driver test data - $(date)" > /data/test.txt
+      echo "Reading test data from EBS volume..."
+      cat /data/test.txt
+      echo "=== EBS CSI Driver Test Completed Successfully ==="
+      sleep 60
+    volumeMounts:
+    - name: ebs-storage
+      mountPath: /data
+  volumes:
+  - name: ebs-storage
+    persistentVolumeClaim:
+      claimName: ebs-test-pvc
+  restartPolicy: Never

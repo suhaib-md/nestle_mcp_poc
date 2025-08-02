@@ -1,0 +1,42 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: VPC Peering Connection between us-east-1 and us-west-2 EKS clusters
+
+Parameters:
+  EastVpcId:
+    Type: String
+    Description: VPC ID from us-east-1 EKS cluster
+  WestVpcId:
+    Type: String
+    Description: VPC ID from us-west-2 EKS cluster
+  EastRouteTableId:
+    Type: String
+    Description: Route table ID from us-east-1 EKS cluster
+  WestRouteTableId:
+    Type: String
+    Description: Route table ID from us-west-2 EKS cluster
+
+Resources:
+  VPCPeeringConnection:
+    Type: AWS::EC2::VPCPeeringConnection
+    Properties:
+      VpcId: !Ref EastVpcId
+      PeerVpcId: !Ref WestVpcId
+      PeerRegion: us-west-2
+      Tags:
+        - Key: Name
+          Value: EKS-MultiRegion-Peering
+
+  # Route from East to West
+  EastToWestRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref EastRouteTableId
+      DestinationCidrBlock: 10.1.0.0/16
+      VpcPeeringConnectionId: !Ref VPCPeeringConnection
+
+Outputs:
+  VPCPeeringConnectionId:
+    Description: ID of the VPC Peering Connection
+    Value: !Ref VPCPeeringConnection
+    Export:
+      Name: !Sub "${AWS::StackName}-VPCPeeringConnectionId"

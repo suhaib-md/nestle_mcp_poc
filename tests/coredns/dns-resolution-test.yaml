@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: coredns-test
+  namespace: default
+  labels:
+    test: coredns
+spec:
+  tolerations:
+  - key: CriticalAddonsOnly
+    operator: Exists
+    effect: NoSchedule
+  - key: karpenter.sh/disrupted
+    operator: Exists
+    effect: NoSchedule
+  containers:
+  - name: test-container
+    image: busybox:1.35
+    command: 
+    - sh
+    - -c
+    - |
+      echo "=== CoreDNS Test Starting ==="
+      echo "Testing internal DNS resolution..."
+      nslookup kubernetes.default.svc.cluster.local
+      echo "Testing external DNS resolution..."
+      nslookup google.com
+      echo "=== CoreDNS Test Completed Successfully ==="
+      sleep 60
+  restartPolicy: Never
