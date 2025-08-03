@@ -1,0 +1,55 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sonarqube
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://SonarSource.github.io/helm-chart-sonarqube
+    chart: sonarqube
+    targetRevision: 2025.3.0
+    helm:
+      values: |
+        skipCrds: false
+        community:
+          enabled: true
+          jvmOpts: "-Xms1G -Xmx1G"         # Reduce heap to 1Gi
+          resources:
+            requests:
+              memory: "1Gi"                # ↓ Lower request to 1Gi
+              cpu: "500m"
+            limits:
+              memory: "2Gi"                # Limit still allows it to grow
+              cpu: "1"
+          startupProbe:
+            httpGet:
+              path: /api/system/status
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            failureThreshold: 60
+        ingress:
+          enabled: false
+        service:
+          type: LoadBalancer
+        persistence:
+          enabled: true
+          storageClass: gp2-immediate
+          size: 10Gi
+        postgresql:
+          enabled: true
+          existingSecret: sonarqube-secret
+          existingSecretKey: postgresql-password
+        existingSecret: sonarqube-secret
+        existingSecretUsernameKey: sonarqube-username
+        existingSecretPasswordKey: sonarqube-password
+        monitoringPasscodeSecretName: sonarqube-secret
+        monitoringPasscodeSecretKey: monitoringPasscode
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: sonarqube
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

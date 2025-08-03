@@ -1,0 +1,7 @@
+SonarQube Access Details for multi-region-eks-east (us-east-1)
+=============================================
+URL: http://k8s-sonarqub-sonarqub-44e3b7ac95-ca57ce33ec60e469.elb.us-east-1.amazonaws.com:9000
+Username: admin
+Password: admin123
+
+Created: Sun Aug  3 11:37:22 UTC 2025

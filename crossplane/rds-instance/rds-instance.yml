@@ -1,0 +1,27 @@
+apiVersion: rds.aws.upbound.io/v1beta1
+kind: Instance
+metadata:
+  name: my-db-instance
+spec:
+  forProvider:
+    region: us-east-1
+    instanceClass: db.t3.micro
+    allocatedStorage: 20
+    engine: mysql
+    engineVersion: "8.0"
+    dbName: mydatabase
+    username: admin
+    passwordSecretRef:
+      name: rds-password
+      namespace: crossplane-system
+      key: password
+    dbSubnetGroupName: rds-subnet-group
+    vpcSecurityGroupIds:
+      - <security-group-id>
+    publiclyAccessible: false
+    skipFinalSnapshot: true
+  writeConnectionSecretToRef:
+    name: my-db-conn
+    namespace: crossplane-system
+  providerConfigRef:
+    name: provider-rds-aws

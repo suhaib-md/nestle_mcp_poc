@@ -1,0 +1,82 @@
+# Crossplane RDS PostgreSQL Instance for SonarQube
+# This creates a managed PostgreSQL database in AWS RDS
+apiVersion: rds.aws.crossplane.io/v1alpha1
+kind: DBInstance
+metadata:
+  name: sonarqube-postgres
+  namespace: crossplane-system
+spec:
+  forProvider:
+    # Database Configuration
+    dbInstanceClass: db.t3.micro
+    dbName: sonarqube
+    engine: postgres
+    engineVersion: "13.13"
+    
+    # Storage Configuration
+    allocatedStorage: 20
+    storageType: gp2
+    storageEncrypted: true
+    
+    # Network Configuration
+    dbSubnetGroupName: default
+    vpcSecurityGroupIds:
+      - sg-0123456789abcdef0  # This will be updated by the script
+    publiclyAccessible: false
+    
+    # Authentication
+    masterUsername: sonarqube
+    autoGeneratePassword: true
+    
+    # Backup and Maintenance
+    backupRetentionPeriod: 7
+    deleteAutomatedBackups: true
+    deletionProtection: false
+    skipFinalSnapshot: true
+    
+    # Monitoring
+    monitoringInterval: 0
+    performanceInsightsEnabled: false
+    
+    # Region
+    region: us-east-1
+    
+    # Tags
+    tags:
+      Name: sonarqube-postgres
+      Environment: development
+      Application: sonarqube
+      ManagedBy: crossplane
+  
+  # Connection Secret
+  writeConnectionSecretsToNamespace: sonarqube-app
+  
+  # Deletion Policy
+  deletionPolicy: Delete
+  
+  # Provider Configuration
+  providerConfigRef:
+    name: default
+---
+# DB Subnet Group for RDS
+apiVersion: rds.aws.crossplane.io/v1alpha1
+kind: DBSubnetGroup
+metadata:
+  name: sonarqube-subnet-group
+  namespace: crossplane-system
+spec:
+  forProvider:
+    description: "Subnet group for SonarQube RDS instance"
+    subnetIds:
+      - subnet-0123456789abcdef0  # This will be updated by the script
+      - subnet-0123456789abcdef1  # This will be updated by the script
+    region: us-east-1
+    tags:
+      Name: sonarqube-subnet-group
+      Environment: development
+      Application: sonarqube
+      ManagedBy: crossplane
+  
+  deletionPolicy: Delete
+  providerConfigRef:
+    name: default

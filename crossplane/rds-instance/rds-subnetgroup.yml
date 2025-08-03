@@ -1,0 +1,16 @@
+# rds-subnet-group.yaml
+apiVersion: rds.aws.upbound.io/v1beta1
+kind: SubnetGroup
+metadata:
+  name: rds-subnet-group
+  labels:
+    app: my-rds-subnet-group
+spec:
+  forProvider:
+    region: us-east-1
+    subnetIds:
+      - subnet-03f6562c20ce2bfba 
+      - subnet-080b2951b076bc26a
+    description: "RDS subnet group"
+  providerConfigRef:
+    name: provider-rds-aws

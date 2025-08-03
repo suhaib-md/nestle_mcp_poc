@@ -1,0 +1,8 @@
+# install-rds.yaml
+apiVersion: pkg.crossplane.io/v1
+kind: Configuration
+metadata:
+  name: provider-aws-rds
+  namespace: crossplane-system
+spec:
+  package: xpkg.upbound.io/upbound/provider-aws-rds:v0.46.0
