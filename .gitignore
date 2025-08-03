@@ -2,5 +2,5 @@
 q/
 scripts/argocd-credentials-multi-region-eks-east.txt
 scripts/argocd-credentials-multi-region-eks-west.txt
-jenkins-credentials-multi-region-eks-east-final.txt
-jenkins-credentials-multi-region-eks-west-final.txt
+jenkins-credentials-multi-region-eks-east.txt
+jenkins-credentials-multi-region-eks-west.txt
