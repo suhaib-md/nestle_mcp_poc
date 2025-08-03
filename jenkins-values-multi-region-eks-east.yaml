@@ -1,0 +1,59 @@
+controller:
+  admin:
+    username: "admin"
+    password: "Jenkins123!"
+  
+  serviceType: LoadBalancer
+  serviceAnnotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+  
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2000m"
+      memory: "4Gi"
+  
+  tolerations:
+    - key: "CriticalAddonsOnly"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "karpenter.sh/disrupted"
+      operator: "Exists"
+      effect: "NoSchedule"
+  
+  installPlugins:
+    - kubernetes:4265.vd7b_4f2c6c93
+    - workflow-aggregator:596.v8c21c963d92d
+    - git:5.4.1
+    - configuration-as-code:1810.v9b_c30a_249a_4c
+    - blueocean:1.27.14
+  
+  JCasC:
+    defaultConfig: true
+    configScripts:
+      welcome-message: |
+        jenkins:
+          systemMessage: "Jenkins LTS on multi-region-eks-east (Manual Deployment, Persistence: false)"
+          securityRealm:
+            local:
+              allowsSignup: false
+              users:
+                - id: "admin"
+                  password: "Jenkins123!"
+          authorizationStrategy:
+            loggedInUsersCanDoAnything:
+              allowAnonymousRead: false
+
+
+persistence:
+  enabled: false
+
+serviceAccount:
+  create: true
+  name: jenkins
+
+rbac:
+  create: true
